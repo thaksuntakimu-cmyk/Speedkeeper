@@ -52,7 +52,11 @@ class SpeedService : Service() {
         val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val mode = if (Build.VERSION.SDK_INT >= 29) WifiManager.WIFI_MODE_FULL_LOW_LATENCY
                    else WifiManager.WIFI_MODE_FULL_HIGH_PERF
-        wifiLock = wm.createWifiLock(mode, "speedkeeper:wifi").apply { acquire() }
+        try {
+            wifiLock = wm.createWifiLock(mode, "speedkeeper:wifi").apply { acquire() }
+        } catch (e: Exception) {
+            wifiLock = null   // lock না পেলেও speed test চলবে
+        }
 
         worker = Thread { loop(nm) }.also { it.start() }
         return START_STICKY
@@ -92,10 +96,13 @@ class SpeedService : Service() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun onWifi(): Boolean {
         val cm = getSystemService(ConnectivityManager::class.java)
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
-        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        // VPN চালু থাকলেও Wi-Fi ধরতে পারবে
+        return cm.allNetworks.any {
+            cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        }
     }
 
     private fun publish(nm: NotificationManager, mbps: Double) {
